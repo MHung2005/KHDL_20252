@@ -15,15 +15,15 @@ module.exports = {
           600: "#0284c7",
         },
         surface: {
-          DEFAULT: "#0a1120",
-          card:    "#0f1a2e",
-          hover:   "#162035",
-          border:  "#1e2f4a",
+          DEFAULT: "#ffffff",
+          card:    "#f8fafc",
+          hover:   "#f1f5f9",
+          border:  "#e2e8f0",
         },
         ink: {
-          DEFAULT: "#f1f5f9",
+          DEFAULT: "#0f172a",
           muted:   "#64748b",
-          faint:   "#334155",
+          faint:   "#cbd5e1",
         },
         accent: {
           violet: "#a78bfa",

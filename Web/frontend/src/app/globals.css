@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   * {
@@ -18,7 +18,7 @@
   }
 
   body {
-    @apply bg-[#060b14] text-ink font-sans antialiased;
+    @apply bg-slate-50 text-ink font-sans antialiased;
     min-height: 100vh;
   }
 
@@ -42,7 +42,7 @@
   /* Recharts override for dark theme */
   .recharts-cartesian-grid-horizontal line,
   .recharts-cartesian-grid-vertical line {
-    stroke: #1e2f4a !important;
+    stroke: #e2e8f0 !important;
   }
   .recharts-tooltip-wrapper .recharts-default-tooltip {
     @apply !bg-surface !border-surface-border !rounded-xl !text-sm;
