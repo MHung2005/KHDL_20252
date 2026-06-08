@@ -17,6 +17,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import (
     TimeoutException, NoSuchElementException, StaleElementReferenceException
 )
@@ -75,7 +77,7 @@ METADATA_KEYWORDS = {
 #  CẤU HÌNH CRAWL
 # ============================================================
 CONFIG = {
-    "posts_per_keyword":      20,    # Số bài viết cần crawl mỗi từ khóa
+    "posts_per_keyword":      2,    # Số bài viết cần crawl mỗi từ khóa
     "max_comments_per_post":  50,    # Giới hạn bình luận mỗi bài
     "scroll_pause_time":       3.0,  # Giây chờ sau mỗi lần scroll
     "page_load_timeout":      30,    # Timeout load trang
@@ -201,20 +203,24 @@ def _click_comment_button(driver: webdriver.Chrome) -> bool:
 #  CRAWL BÌNH LUẬN TỪ SECTION COMMENT (INLINE HOẶC POST PAGE)
 # ============================================================
 def _collect_comments_from_current_page(driver: webdriver.Chrome,
-                                        main_blacklist: set) -> list[str]:
-    """Thu thập text bình luận từ trang hiện tại (sau khi đã mở section comment)."""
+                                        main_blacklist: set,
+                                        context_element=None) -> list[str]:
+    """Thu thập text bình luận trong một phạm vi cụ thể (Inline hoặc Modal)."""
     ignore_ui = {
         "Thích", "Phản hồi", "Chia sẻ", "Đã chỉnh sửa", "Xem thêm",
         "Bình luận", "Viết bình luận...", "Like", "Reply", "Comment", "Share",
         "Yêu thích", "Haha", "Wow", "Buồn", "Phẫn nộ",
     }
 
-    # Mở rộng các bình luận ẩn
+    # Nếu có context_element (vùng chứa) thì tìm trong đó, không thì tìm toàn màn hình
+    context = context_element if context_element else driver
+
+    # Mở rộng bình luận (LƯU Ý CÓ DẤU CHẤM TRƯỚC //)
     for _ in range(3):
         try:
-            more_btns = driver.find_elements(
+            more_btns = context.find_elements(
                 By.XPATH,
-                "//div[@role='button'][contains(.,'Xem thêm bình luận') "
+                ".//div[@role='button'][contains(.,'Xem thêm bình luận') "
                 "or contains(.,'Xem các bình luận trước')]"
             )
             for btn in more_btns:
@@ -229,9 +235,10 @@ def _collect_comments_from_current_page(driver: webdriver.Chrome,
     comments = []
     seen = set()
     try:
-        elements = driver.find_elements(
+        # LƯU Ý CÓ DẤU CHẤM TRƯỚC // ĐỂ KHÔNG BỊ QUÉT TEXT CỦA BÀI KHÁC TRÊN FEED
+        elements = context.find_elements(
             By.XPATH,
-            "//div[@dir='auto' and not(ancestor::h1) and not(ancestor::h2)]"
+            ".//div[@dir='auto' and not(ancestor::h1) and not(ancestor::h2)]"
         )
         for el in elements:
             try:
@@ -239,13 +246,9 @@ def _collect_comments_from_current_page(driver: webdriver.Chrome,
             except StaleElementReferenceException:
                 continue
 
-            if not text:
+            if not text or text in ignore_ui or text in main_blacklist:
                 continue
-            if text in ignore_ui or text in main_blacklist:
-                continue
-            if len(text) <= 2:
-                continue
-            if text.replace(",", "").replace(".", "").replace("K", "").isdigit():
+            if len(text) <= 2 or text.replace(",", "").replace(".", "").replace("K", "").isdigit():
                 continue
             if _is_caption_or_hashtag(text):
                 continue
@@ -296,22 +299,21 @@ def crawl_single_post(driver: webdriver.Chrome, post_url: str) -> list[str]:
     return comments
 
 # ============================================================
-#  LOGIC CHÍNH: CRAWL THEO TỪ KHÓA
+#  LOGIC CHÍNH: CRAWL THEO TỪ KHÓA (UPDATE LÀM VIỆC TRÊN FEED)
 # ============================================================
 def crawl_keyword(driver: webdriver.Chrome, keyword: str) -> list[str]:
     """
-    Logic:
-    1. Mở trang tìm kiếm Facebook theo từ khóa
-    2. Vòng lặp:
-       a. Lấy link bài viết đang hiển thị trên feed
-       b. Với mỗi link chưa xử lý: mở bài viết, nhấn nút bình luận, crawl
-       c. Scroll feed để tải thêm bài viết mới
-    3. Dừng khi đủ 20 bài viết
+    Logic mới 2026:
+    1. Mở trang tìm kiếm Facebook theo từ khóa.
+    2. Quét các nút bình luận chưa tương tác (dùng thuộc tính tự chế data-crawled).
+    3. Click mở bình luận ngay trên Feed (Inline hoặc Modal).
+    4. Cào dữ liệu text, sau đó nhấn ESC để đóng Modal (nếu là Reels).
+    5. Cuộn xuống để tải thêm bài.
     """
     POSTS_TARGET = CONFIG["posts_per_keyword"]
     all_comments: list[str] = []
-    visited_links: set[str] = set()
     feed_scroll_count = 0
+    processed_count = 0
 
     encoded_kw = urllib.parse.quote(keyword)
     search_url = f"https://www.facebook.com/search/posts?q={encoded_kw}"
@@ -322,47 +324,69 @@ def crawl_keyword(driver: webdriver.Chrome, keyword: str) -> list[str]:
 
     print(f"     [*] Bắt đầu vòng lặp — mục tiêu: {POSTS_TARGET} bài viết\n")
 
-    while len(visited_links) < POSTS_TARGET:
-        # --- Bước 1: Thu thập link đang hiển thị ---
-        current_links = _extract_post_links_from_current_view(driver)
-        new_links = [lk for lk in current_links if lk not in visited_links]
+    while processed_count < POSTS_TARGET:
+        # TÌm các nút bình luận dựa vào class/role bạn cung cấp, 
+        # CỰC KỲ QUAN TRỌNG: Loại trừ những nút đã được đánh dấu 'data-crawled'
+        buttons = driver.find_elements(
+            By.XPATH,
+            "//div[@data-ad-rendering-role='comment_button' and not(@data-crawled='true')]"
+        )
 
-        if new_links:
-            for url in new_links:
-                if len(visited_links) >= POSTS_TARGET:
-                    break
+        if buttons:
+            btn = buttons[0] # Luôn lấy nút đầu tiên tìm thấy trong danh sách chưa xử lý
+            try:
+                # 1. Đánh dấu nút này đã xử lý bằng JavaScript để các vòng lặp sau bỏ qua
+                driver.execute_script("arguments[0].setAttribute('data-crawled', 'true');", btn)
 
-                print(f"\n     🗨️  Bài viết {len(visited_links) + 1}/{POSTS_TARGET}")
-                comments = crawl_single_post(driver, url)
+                # 2. Cuộn nút vào giữa màn hình
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+                time.sleep(1)
+
+                # 3. Trích xuất blacklist (nội dung post) để lọc rác. 
+                # (Tìm thẻ article cha gần nhất của nút bình luận này)
+                main_blacklist = set()
+                try:
+                    parent_article = btn.find_element(By.XPATH, "./ancestor::div[@role='article'][1]")
+                    for el in parent_article.find_elements(By.XPATH, ".//div[@dir='auto']"):
+                        t = el.text.strip()
+                        if t:
+                            main_blacklist.add(t)
+                except Exception:
+                    pass # Nếu không tìm thấy, bỏ qua blacklist cho bài này
+
+                # 4. Click mở bình luận
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(3)  # Chờ comment popup/inline hiển thị
+
+                processed_count += 1
+                print(f"\n     🗨️  Bài viết {processed_count}/{POSTS_TARGET}")
+
+                # 5. Thu thập bình luận (Sử dụng nguyên bản hàm cũ của bạn)
+                comments = _collect_comments_from_current_page(driver, main_blacklist)
                 all_comments.extend(comments)
-                visited_links.add(url)
+                print(f"         → {len(comments)} bình luận")
 
-                # Quay lại trang tìm kiếm để tiếp tục scroll
-                print(f"         [*] Quay lại feed tìm kiếm...")
-                driver.get(search_url)
-                time.sleep(CONFIG["scroll_pause_time"])
+                # 6. THOÁT MODAL: Nếu post là dạng Reel/Video, click sẽ mở một màn hình đen (Modal).
+                # Nhấn ESCAPE để tắt nó đi, trả màn hình về lại trang tìm kiếm ban đầu.
+                ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+                time.sleep(1)
 
-                # Scroll xuống để bù lại vị trí đã mất khi reload
-                scroll_pixels = feed_scroll_count * 800
-                if scroll_pixels > 0:
-                    driver.execute_script(f"window.scrollBy(0, {scroll_pixels});")
-                    time.sleep(2)
-
-                time.sleep(random.uniform(2, 4))  # Nghỉ tránh bị checkpoint
-
-        # --- Bước 2: Scroll feed để tải thêm bài mới ---
-        if len(visited_links) < POSTS_TARGET:
+            except Exception as e:
+                print(f"         ⚠️ Lỗi khi xử lý bài viết (có thể bị che mất hoặc stale): {e}")
+                processed_count += 1 # Bỏ qua bài lỗi, đi tiếp tới bài sau
+        else:
+            # Nếu không tìm thấy nút nào mới trên màn hình -> cuộn feed xuống
             if feed_scroll_count >= CONFIG["max_feed_scrolls"]:
                 print(f"\n     ⚠️ Đã đạt giới hạn scroll ({CONFIG['max_feed_scrolls']} lần). Dừng sớm.")
                 break
 
             print(f"     ↓  Scroll feed lần {feed_scroll_count + 1} để tải thêm bài...")
-            driver.execute_script("window.scrollBy(0, 800);")
+            driver.execute_script("window.scrollBy(0, 1000);")
             time.sleep(CONFIG["scroll_pause_time"])
             feed_scroll_count += 1
 
     print(f"\n     ✅ Hoàn tất từ khóa '{keyword}': "
-          f"{len(visited_links)} bài viết | {len(all_comments)} bình luận")
+          f"{processed_count} bài viết | {len(all_comments)} bình luận")
     return all_comments
 
 

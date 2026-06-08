@@ -1,12 +1,22 @@
-# docker-compose.yml
-version: "3"
 services:
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    ports: ["9870:9870", "9000:9000"]
+    container_name: namenode
+    hostname: namenode
     environment:
-      CLUSTER_NAME: hate-speech-cluster
+      - CLUSTER_NAME=khdl_cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    ports:
+      - "9870:9870"
+      - "9000:9000"
 
   datanode:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    depends_on: [namenode]
+    container_name: datanode
+    hostname: datanode        # <--- Cố định tên để Windows gọi thay vì dùng ID ngẫu nhiên
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    ports:
+      - "9864:9864"          # <--- BẮT BUỘC: Mở cổng WebHDFS của DataNode ra máy ngoài
+    depends_on:
+      - namenode
