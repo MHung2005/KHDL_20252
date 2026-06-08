@@ -11,6 +11,8 @@ Luồng xử lý chính:
 
 import asyncio
 import csv
+import io
+import uuid
 import random
 import re
 import time
@@ -19,7 +21,49 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from hdfs import InsecureClient
 from playwright.async_api import async_playwright, Page, BrowserContext
+
+# ============================================================
+#  CẤU HÌNH HDFS
+# ============================================================
+HDFS_URL  = "http://localhost:9870"
+HDFS_USER = "hadoop"
+HDFS_BASE = "/data/raw/tiktok"
+
+def save_to_hdfs(comments: list):
+    """Lưu list[Comment] lên HDFS dưới dạng Parquet (SNAPPY)."""
+    if not comments:
+        return
+    today     = datetime.now().strftime("%Y-%m-%d")
+    file_id   = uuid.uuid4().hex[:8]
+    hdfs_dir  = f"{HDFS_BASE}/crawl_date={today}"
+    hdfs_path = f"{hdfs_dir}/part_{file_id}.parquet"
+
+    out = pd.DataFrame([{
+        "id":      str(uuid.uuid4()),
+        "text":    c.text.strip(),
+        "topic":   c.topic,
+        "keyword": c.keyword,
+        "url":     c.video_url,
+        "label":   -1,          # -1 = chưa gán nhãn
+    } for c in comments])
+
+    buf = io.BytesIO()
+    pq.write_table(pa.Table.from_pandas(out, preserve_index=False), buf, compression="snappy")
+    buf.seek(0)
+
+    try:
+        client = InsecureClient(HDFS_URL, user=HDFS_USER)
+        client.makedirs(hdfs_dir)
+        with client.write(hdfs_path, overwrite=True) as f:
+            f.write(buf.read())
+        print(f"☁️  HDFS: đã lưu {len(out)} dòng → {hdfs_path}")
+    except Exception as e:
+        print(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
 
 
 # ===========================================================================
@@ -583,6 +627,7 @@ class TikTokScraper:
                 writer.writerow([c.text.strip(), c.topic, c.keyword, c.video_url])
 
         print(f"  [save] Đã ghi {len(new_comments)} bình luận → {output_file}")
+        save_to_hdfs(new_comments)
 
 
     def _load_existing_keys(self, file_path: Path) -> set[tuple[str, str, str, str]]:

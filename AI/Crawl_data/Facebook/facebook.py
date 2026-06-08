@@ -20,7 +20,49 @@ from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import (
     TimeoutException, NoSuchElementException, StaleElementReferenceException
 )
+import io
+import uuid
+from datetime import datetime
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from hdfs import InsecureClient
+
+# ============================================================
+#  CẤU HÌNH HDFS
+# ============================================================
+HDFS_URL  = "http://localhost:9870"
+HDFS_USER = "hadoop"
+HDFS_BASE = "/data/raw/facebook"
+
+def save_to_hdfs(df: pd.DataFrame):
+    """Lưu DataFrame lên HDFS dưới dạng Parquet (SNAPPY)."""
+    today     = datetime.now().strftime("%Y-%m-%d")
+    file_id   = uuid.uuid4().hex[:8]
+    hdfs_dir  = f"{HDFS_BASE}/crawl_date={today}"
+    hdfs_path = f"{hdfs_dir}/part_{file_id}.parquet"
+
+    out = pd.DataFrame({
+        "id":      [str(uuid.uuid4()) for _ in range(len(df))],
+        "text":    df["text"],
+        "topic":   df["topic"],
+        "keyword": df["keyword"],
+        "url":     "",          # Facebook không lấy được URL comment
+        "label":   -1,          # -1 = chưa gán nhãn
+    })
+
+    buf = io.BytesIO()
+    pq.write_table(pa.Table.from_pandas(out, preserve_index=False), buf, compression="snappy")
+    buf.seek(0)
+
+    try:
+        client = InsecureClient(HDFS_URL, user=HDFS_USER)
+        client.makedirs(hdfs_dir)
+        with client.write(hdfs_path, overwrite=True) as f:
+            f.write(buf.read())
+        print(f"☁️  HDFS: đã lưu {len(out)} dòng → {hdfs_path}")
+    except Exception as e:
+        print(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
 
 # ============================================================
 #  CẤU HÌNH TỪ KHÓA & CHỦ ĐỀ
@@ -323,6 +365,7 @@ def crawl_keyword(driver: webdriver.Chrome, keyword: str) -> list[str]:
           f"{len(visited_links)} bài viết | {len(all_comments)} bình luận")
     return all_comments
 
+
 # ============================================================
 #  HÀM CHẠY TOÀN BỘ & LƯU FILE
 # ============================================================
@@ -352,6 +395,7 @@ def main():
             df = crawl_all(driver)
             df.to_csv(CONFIG["output_file"], index=False, encoding="utf-8-sig")
             print(f"\n💾 THÀNH CÔNG: Đã lưu {len(df)} dòng → '{CONFIG['output_file']}'")
+            save_to_hdfs(df)
     finally:
         driver.quit()
         print("🛑 Đã đóng trình duyệt.")

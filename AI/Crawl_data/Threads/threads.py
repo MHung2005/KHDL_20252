@@ -1,11 +1,56 @@
 import time
 import random
 import csv
+import io
+import uuid
 import logging
 import re
 from datetime import datetime
 
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from hdfs import InsecureClient
+
 logger = logging.getLogger(__name__)
+
+# ============================================================
+#  CẤU HÌNH HDFS
+# ============================================================
+HDFS_URL  = "http://localhost:9870"
+HDFS_USER = "hadoop"
+HDFS_BASE = "/data/raw/threads"
+
+def save_to_hdfs(rows: list):
+    """Lưu list[dict] bình luận lên HDFS dưới dạng Parquet (SNAPPY)."""
+    if not rows:
+        return
+    today     = datetime.now().strftime("%Y-%m-%d")
+    file_id   = uuid.uuid4().hex[:8]
+    hdfs_dir  = f"{HDFS_BASE}/crawl_date={today}"
+    hdfs_path = f"{hdfs_dir}/part_{file_id}.parquet"
+
+    out = pd.DataFrame([{
+        "id":      str(uuid.uuid4()),
+        "text":    r["comment_text"],
+        "topic":   r["topic"],
+        "keyword": r["keyword"],
+        "url":     r["post_url"],
+        "label":   -1,          # -1 = chưa gán nhãn
+    } for r in rows])
+
+    buf = io.BytesIO()
+    pq.write_table(pa.Table.from_pandas(out, preserve_index=False), buf, compression="snappy")
+    buf.seek(0)
+
+    try:
+        client = InsecureClient(HDFS_URL, user=HDFS_USER)
+        client.makedirs(hdfs_dir)
+        with client.write(hdfs_path, overwrite=True) as f:
+            f.write(buf.read())
+        logger.info(f"☁️  HDFS: đã lưu {len(out)} dòng → {hdfs_path}")
+    except Exception as e:
+        logger.warning(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
 
 METADATA_KEYWORDS = {
      "the_thao":   ["Bóng đá", "Thể thao", "Liên minh huyền thoại", "Liên quân mobile", "Thể hình", "Bóng chuyền", "Cầu lông", "Chạy bộ", "Bóng rổ", "Tin thể thao"],
@@ -317,6 +362,7 @@ def crawl_with_selenium(output_csv: str = "threads_selenium1.csv", headless: boo
         writer.writerows(unique)
 
     logger.info(f"Đã lưu {len(unique)} bình luận → {output_csv}")
+    save_to_hdfs(unique)
     return unique
 
 
