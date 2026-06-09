@@ -1,84 +1,56 @@
 """
-app/database.py - Quản lý kết nối Hive và HDFS
-Sử dụng pyhive để kết nối Hive, hdfs để kết nối HDFS
+app/database.py - Quản lý kết nối Spark và HDFS
+Tích hợp trực tiếp module HdfsQuery (PySpark) 
 """
 import logging
 from typing import Optional, List, Dict, Any
-from contextlib import contextmanager
-
 from app.config import settings
+from export_data import HdfsQuery 
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------
-# Hive Connection Manager
+# Spark Data Engine Manager
 # ---------------------------------------------------------------
-class HiveConnection:
-    """Quản lý kết nối đến Apache Hive qua Thrift Server"""
+class SparkDataEngine:
+    """Quản lý kết nối PySpark để truy vấn dữ liệu HDFS"""
 
     def __init__(self):
-        self._connection = None
+        self._query_engine: Optional[HdfsQuery] = None
 
-    def get_connection(self):
-        """Lấy kết nối Hive, tạo mới nếu chưa có"""
-        if self._connection is None:
+    def get_engine(self) -> HdfsQuery:
+        """Khởi tạo và trả về instance của HdfsQuery"""
+        if self._query_engine is None:
             try:
-                from pyhive import hive
-                self._connection = hive.Connection(
-                    host=settings.HIVE_HOST,
-                    port=settings.HIVE_PORT,
-                    database=settings.HIVE_DATABASE,
-                    username=settings.HIVE_USERNAME,
-                    auth=settings.HIVE_AUTH,
+                # Khởi tạo HdfsQuery với cấu hình từ settings
+                self._query_engine = HdfsQuery(
+                    app_name="Backend_DataAPI",
+                    master="local[*]" 
                 )
-                logger.info(f"✅ Hive connected: {settings.HIVE_HOST}:{settings.HIVE_PORT}")
-            except ImportError:
-                raise RuntimeError("pyhive not installed. Run: pip install pyhive[hive]")
+                logger.info("✅ PySpark Engine initialized successfully.")
             except Exception as e:
-                raise RuntimeError(f"Hive connection failed: {e}")
-        return self._connection
-
-    @contextmanager
-    def cursor(self):
-        """Context manager cho Hive cursor"""
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            yield cur
-        finally:
-            cur.close()
-
-    def execute_query(self, sql: str, params: tuple = None) -> List[Dict[str, Any]]:
-        """
-        Thực thi câu query Hive và trả về list dict
-        
-        Args:
-            sql: Câu HiveQL cần thực thi
-            params: Tham số (nếu có)
-        Returns:
-            List[Dict] - Kết quả query
-        """
-        with self.cursor() as cur:
-            if params:
-                cur.execute(sql, params)
-            else:
-                cur.execute(sql)
-            
-            columns = [desc[0] for desc in cur.description] if cur.description else []
-            rows = cur.fetchall()
-            return [dict(zip(columns, row)) for row in rows]
+                logger.error(f"❌ Khởi tạo PySpark thất bại: {e}")
+                raise RuntimeError(f"Spark connection failed: {e}")
+                
+        return self._query_engine
 
     def close(self):
-        if self._connection:
-            self._connection.close()
-            self._connection = None
+        """Tắt SparkSession khi backend API tắt"""
+        if self._query_engine:
+            self._query_engine.stop()
+            self._query_engine = None
+            logger.info("✅ PySpark Engine stopped.")
 
 
 # ---------------------------------------------------------------
-# HDFS Connection Manager
+# HDFS Connection Manager (Raw WebHDFS)
 # ---------------------------------------------------------------
 class HDFSConnection:
-    """Quản lý kết nối đến HDFS qua WebHDFS REST API"""
+    """
+    Quản lý kết nối đến HDFS qua WebHDFS REST API.
+    Chỉ dùng cho các thao tác file thô (liệt kê file, xóa thư mục, xem status).
+    Truy vấn dữ liệu thì dùng SparkDataEngine ở trên.
+    """
 
     def __init__(self):
         self._client = None
@@ -88,7 +60,7 @@ class HDFSConnection:
             try:
                 from hdfs import InsecureClient
                 self._client = InsecureClient(
-                    url=f"http://{settings.HDFS_HOST}:{settings.HDFS_PORT}",
+                    url=f"http://{settings.HDFS_HOST}:{settings.HDFS_PORT}", # Dùng port 9870
                     user=settings.HDFS_USER
                 )
                 logger.info(f"✅ HDFS connected: {settings.HDFS_HOST}:{settings.HDFS_PORT}")
@@ -99,7 +71,6 @@ class HDFSConnection:
         return self._client
 
     def list_files(self, path: str) -> List[Dict]:
-        """Liệt kê files trong một thư mục HDFS"""
         client = self.get_client()
         try:
             files = client.list(path, status=True)
@@ -107,26 +78,6 @@ class HDFSConnection:
         except Exception as e:
             logger.error(f"HDFS list error at {path}: {e}")
             return []
-
-    def get_file_info(self, path: str) -> Optional[Dict]:
-        """Lấy thông tin file trên HDFS"""
-        client = self.get_client()
-        try:
-            status = client.status(path)
-            return status
-        except Exception as e:
-            logger.error(f"HDFS status error at {path}: {e}")
-            return None
-
-    def read_file(self, path: str, encoding: str = "utf-8") -> Optional[str]:
-        """Đọc nội dung file từ HDFS"""
-        client = self.get_client()
-        try:
-            with client.read(path, encoding=encoding) as reader:
-                return reader.read()
-        except Exception as e:
-            logger.error(f"HDFS read error at {path}: {e}")
-            return None
 
 
 # ---------------------------------------------------------------
@@ -246,15 +197,15 @@ class MockDataService:
 # ---------------------------------------------------------------
 # Singleton instances
 # ---------------------------------------------------------------
-hive_conn = HiveConnection()
+spark_engine = SparkDataEngine()
 hdfs_conn = HDFSConnection()
 mock_data = MockDataService()
 
-
 async def test_connections():
-    """Test kết nối Hive và HDFS"""
+    """Test khởi tạo Spark và HDFS khi start Backend App"""
     if settings.USE_MOCK_DATA:
-        logger.info("📦 Running in MOCK DATA mode - Hadoop not required")
+        logger.info("📦 Running in MOCK DATA mode - Hadoop/Spark not required")
         return
-    hive_conn.get_connection()
+        
+    spark_engine.get_engine()
     hdfs_conn.get_client()

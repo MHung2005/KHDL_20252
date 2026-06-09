@@ -154,15 +154,16 @@ beeline -u "jdbc:hive2://localhost:10000" -f hive/schema.sql
 ### 4. .env.example
 
 ```
-HIVE_HOST=localhost
-HIVE_PORT=10000
-HIVE_DATABASE=hate_speech_db
-HIVE_USERNAME=hive
-HIVE_AUTH=NOSASL
+# Môi trường chạy
+DEBUG_MODE=True
+USE_MOCK_DATA=False
+
+# Cấu hình HDFS
 HDFS_HOST=localhost
 HDFS_PORT=9870
+HDFS_RPC_PORT=9000
 HDFS_USER=hadoop
-USE_MOCK_DATA=true
+HDFS_RAW_DATA_DIR=/data/raw
 ALLOWED_ORIGINS=["http://localhost:3000"]
 ```
 
@@ -172,7 +173,7 @@ ALLOWED_ORIGINS=["http://localhost:3000"]
 
 | Mô hình                       | Loại          | Accuracy | Macro F1 |
 |-------------------------------|---------------|----------|----------|
-| TF-IDF + SVM                 | Traditional   | 78.23%   | 76.15%   |
+| TF-IDF + SVM                  | Traditional   | 78.23%   | 76.15%   |
 | TF-IDF + Logistic Regression  | Traditional   | 80.15%   | 78.32%   |
 | PhoBERT + Classification Head | Deep Learning | **89.34%** | **88.23%** |
 

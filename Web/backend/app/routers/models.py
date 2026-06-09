@@ -1,17 +1,17 @@
 """
 app/routers/models.py
-API endpoints đánh giá và so sánh mô hình
+API endpoints đánh giá và so sánh mô hình (Đang dùng Mock Data để test UI)
 """
 import json
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from app.database import hive_conn, mock_data
+# Loại bỏ hive_conn, chỉ giữ lại mock_data
+from database import mock_data
 from app.config import settings
 
 router = APIRouter()
-
 
 class ModelMetrics(BaseModel):
     model_id: str
@@ -36,16 +36,12 @@ class ModelMetrics(BaseModel):
 @router.get("/comparison", summary="So sánh hiệu năng tất cả mô hình")
 async def get_model_comparison():
     """
-    Trả về kết quả đánh giá và so sánh tất cả mô hình:
-    TF-IDF + SVM, TF-IDF + LR, PhoBERT
+    Trả về kết quả đánh giá và so sánh tất cả mô hình.
+    Hiện tại ĐANG ÉP DÙNG MOCK DATA để Frontend test giao diện biểu đồ.
     """
     try:
-        if settings.USE_MOCK_DATA:
-            models = mock_data.get_model_comparison()
-        else:
-            models = hive_conn.execute_query(
-                "SELECT * FROM hate_speech_db.v_model_comparison ORDER BY macro_f1 DESC"
-            )
+        # TODO: Sau này khi có dữ liệu thật trên HDFS/MLflow, thay thế đoạn này bằng Spark
+        models = mock_data.get_model_comparison()
 
         # Parse confusion matrix JSON string
         for m in models:
@@ -64,15 +60,8 @@ async def get_model_comparison():
 async def get_model_detail(model_id: str):
     """Lấy thông tin chi tiết một mô hình theo ID"""
     try:
-        if settings.USE_MOCK_DATA:
-            all_models = mock_data.get_model_comparison()
-            model = next((m for m in all_models if m["model_id"] == model_id), None)
-        else:
-            results = hive_conn.execute_query(
-                "SELECT * FROM hate_speech_db.v_model_comparison WHERE model_id = %(id)s",
-                (model_id,)
-            )
-            model = results[0] if results else None
+        all_models = mock_data.get_model_comparison()
+        model = next((m for m in all_models if m["model_id"] == model_id), None)
 
         if not model:
             raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
@@ -92,30 +81,23 @@ async def get_model_detail(model_id: str):
 
 @router.get("/", summary="Danh sách tất cả mô hình")
 async def list_models():
-    """Liệt kê tất cả mô hình đã đăng ký"""
+    """Liệt kê tất cả mô hình đã đăng ký (Dùng cho bảng hoặc Dropdown)"""
     try:
-        if settings.USE_MOCK_DATA:
-            models = mock_data.get_model_comparison()
-            # Chỉ trả về metadata cơ bản
-            return {"success": True, "data": [
-                {
-                    "model_id": m["model_id"],
-                    "model_display_name": m["model_display_name"],
-                    "model_type": m["model_type"],
-                    "version": m["version"],
-                    "accuracy": m["accuracy"],
-                    "macro_f1": m["macro_f1"],
-                }
-                for m in models
-            ]}
-        else:
-            data = hive_conn.execute_query("""
-                SELECT model_id, model_display_name, model_type, version,
-                       is_active, created_at
-                FROM hate_speech_db.model_registry
-                WHERE is_active = TRUE
-                ORDER BY created_at DESC
-            """)
-            return {"success": True, "data": data}
+        models = mock_data.get_model_comparison()
+        # Chỉ lấy metadata cơ bản đẩy ra cho nhẹ API
+        data = [
+            {
+                "model_id": m["model_id"],
+                "model_display_name": m["model_display_name"],
+                "model_type": m["model_type"],
+                "version": m["version"],
+                "accuracy": m["accuracy"],
+                "macro_f1": m["macro_f1"],
+                "is_active": True,
+                "created_at": m["evaluated_at"]
+            }
+            for m in models
+        ]
+        return {"success": True, "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

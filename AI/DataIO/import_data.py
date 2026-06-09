@@ -8,13 +8,13 @@ from hdfs import InsecureClient
 
 HDFS_URL  = "http://localhost:9870"
 HDFS_USER = "hadoop"
-HDFS_BASE = "/data/raw/tiktok"
+HDFS_BASE = "/data/raw/"
 
-def save_to_hdfs(df: pd.DataFrame):
+def save_to_hdfs(df: pd.DataFrame, source="tiktok"):
     """Lưu DataFrame lên HDFS dưới dạng Parquet (SNAPPY)."""
     today     = datetime.now().strftime("%Y-%m-%d")
     file_id   = uuid.uuid4().hex[:8]
-    hdfs_dir  = f"{HDFS_BASE}/crawl_date={today}"
+    hdfs_dir  = f"{HDFS_BASE}{source}/crawl_date={today}"
     hdfs_path = f"{hdfs_dir}/part_{file_id}.parquet"
 
     out = pd.DataFrame({
@@ -39,9 +39,13 @@ def save_to_hdfs(df: pd.DataFrame):
     except Exception as e:
         print(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
 
-
-path = "./AI/DataIO/Data_final - tiktok.csv"
-df = pd.read_csv(path)
-print(f"✅ Đã đọc {len(df)} dòng từ {path}")
-save_to_hdfs(df)
+if __name__ == "__main__":
+    path = "./AI/DataIO/data_sau_loc_preprocessed.csv"
+    df = pd.read_csv(path, sep=";")
+    df_tiktok = df[df["source"] == "tiktok"]
+    print(f"✅ Đã đọc {len(df_tiktok)} dòng từ tiktok")
+    df_threads = df[df["source"] == "threads"]
+    print(f"✅ Đã đọc {len(df_threads)} dòng từ threads")
+    save_to_hdfs(df_tiktok, source="tiktok")
+    save_to_hdfs(df_threads, source="threads")
 

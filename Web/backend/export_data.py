@@ -41,6 +41,7 @@ from pyspark.sql import functions as F
 HDFS_HOST  = "localhost"
 HDFS_PORT  = 9000
 HDFS_BASE  = f"hdfs://{HDFS_HOST}:{HDFS_PORT}/data/raw"
+HDFS_PROCESSED_BASE = f"hdfs://{HDFS_HOST}:{HDFS_PORT}/data/processed"
 PLATFORMS  = ("threads", "tiktok")
 
 # Nhãn label
@@ -501,6 +502,25 @@ class HdfsQuery:
         print("=" * 55 + "\n")
 
     # ─────────────────────────────────────────────────────────
+    #  MODULE 7 — Truy cập dữ liệu đã qua xử lý
+    # ─────────────────────────────────────────────────────────
+    def get_processed_data(self) -> Optional[DataFrame]:
+        """
+        Đọc tập dữ liệu đã qua xử lý (có cột split_set: train/test).
+        """
+        try:
+            # Đọc toàn bộ thư mục /data/processed
+            df = (
+                self.spark.read
+                .option("mergeSchema", "true")
+                .parquet(HDFS_PROCESSED_BASE)
+            )
+            return df
+        except Exception as e:
+            print(f"⚠️ Thư mục Processed chưa có dữ liệu: {e}")
+            return None
+
+    # ─────────────────────────────────────────────────────────
     #  Tiện ích
     # ─────────────────────────────────────────────────────────
 
@@ -536,8 +556,8 @@ if __name__ == "__main__":
     # df_week.show(5)
 
     # ── Theo nền tảng
-    df_fb = q.query_by_platform("facebook")
-    df_fb.show(5)
+    # df_fb = q.query_by_platform("facebook")
+    # df_fb.show(5)
 
     # ── Theo topic
     df_topic = q.query_by_topic("the_thao")
