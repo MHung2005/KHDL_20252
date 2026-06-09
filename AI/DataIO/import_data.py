@@ -8,7 +8,7 @@ from hdfs import InsecureClient
 
 HDFS_URL  = "http://localhost:9870"
 HDFS_USER = "hadoop"
-HDFS_BASE = "/data/raw/threads"
+HDFS_BASE = "/data/raw/tiktok"
 
 def save_to_hdfs(df: pd.DataFrame):
     """Lưu DataFrame lên HDFS dưới dạng Parquet (SNAPPY)."""
@@ -40,7 +40,7 @@ def save_to_hdfs(df: pd.DataFrame):
         print(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
 
 
-path = "./AI/DataIO/Data_final - threads.csv"
+path = "./AI/DataIO/Data_final - tiktok.csv"
 df = pd.read_csv(path)
 print(f"✅ Đã đọc {len(df)} dòng từ {path}")
 save_to_hdfs(df)
