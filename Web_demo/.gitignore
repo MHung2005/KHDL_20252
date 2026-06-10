@@ -1,0 +1,47 @@
+*.csv
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Data and model artifacts
+*.sqlite3
+*.db
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.onnx
+
+# Environment files
+.env
+.env.*
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# VS Code and OS files
+.vscode/
+.DS_Store
+Thumbs.db

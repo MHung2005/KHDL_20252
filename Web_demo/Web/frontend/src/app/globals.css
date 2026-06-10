@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-50 text-ink font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-faint;
+  }
+}
+
+@layer components {
+  /* Recharts override for dark theme */
+  .recharts-cartesian-grid-horizontal line,
+  .recharts-cartesian-grid-vertical line {
+    stroke: #e2e8f0 !important;
+  }
+  .recharts-tooltip-wrapper .recharts-default-tooltip {
+    @apply !bg-surface !border-surface-border !rounded-xl !text-sm;
+  }
+  .recharts-legend-item-text {
+    @apply !text-ink-muted;
+    font-size: 11px !important;
+  }
+
+  /* Animated underline */
+  .nav-link-active {
+    position: relative;
+  }
+  .nav-link-active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    @apply bg-brand-400 rounded-full;
+  }
+
+  /* Glow card */
+  .card-glow-blue  { box-shadow: 0 0 28px rgba(56,189,248,0.08); }
+  .card-glow-violet { box-shadow: 0 0 28px rgba(167,139,250,0.08); }
+  .card-glow-pink  { box-shadow: 0 0 28px rgba(244,114,182,0.08); }
+  .card-glow-teal  { box-shadow: 0 0 28px rgba(52,211,153,0.08); }
+}

@@ -1,0 +1,15 @@
+# Web Framework & Server
+fastapi==0.111.0
+uvicorn==0.30.1
+
+# Configuration Management
+pydantic==2.7.4
+pydantic-settings==2.3.4
+
+# Big Data & Hadoop
+pyspark==3.5.1
+hdfs==2.7.3
+
+# Data Processing (PySpark dependencies)
+pandas==2.2.2
+pyarrow==16.1.0
