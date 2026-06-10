@@ -58,7 +58,7 @@ export default function Sidebar() {
         </div>
         <div className="bg-[#060b14] rounded-lg px-3 py-1.5 flex items-center gap-2">
           <StatusDot color="teal" />
-          <span className="text-[10px] text-accent-teal font-semibold">Hadoop · Hive</span>
+          <span className="text-[10px] text-accent-teal font-semibold">Hadoop · PySpark</span>
         </div>
       </div>
 

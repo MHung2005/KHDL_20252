@@ -110,15 +110,15 @@ export default function DashboardPage() {
       <div className="mb-7">
         <h1 className="text-2xl font-extrabold text-ink">Dashboard</h1>
         <p className="text-sm text-ink-muted mt-1">
-          Tổng quan dữ liệu crawl từ TikTok, Threads, Facebook
+          Tổng quan dữ liệu crawl từ TikTok, Threads
         </p>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatCard label="Tổng bài viết"  value={fmt(data.total_records)}   sub="Từ 3 nền tảng"              color="blue"   icon="📊" delay={0}   />
+        <StatCard label="Tổng bài viết"  value={fmt(data.total_records)}   sub="Từ 2 nền tảng"              color="blue"   icon="📊" delay={0}   />
         <StatCard label="Đã gán nhãn"    value={fmt(data.total_labeled)}    sub={`${pct(data.total_labeled/data.total_records)} tổng`} color="teal"   icon="🏷️" delay={80}  />
-        <StatCard label="Nền tảng"       value={data.total_platforms}       sub="TikTok · Threads · Facebook" color="violet" icon="🌐" delay={160} />
+        <StatCard label="Nền tảng"       value={data.total_platforms}       sub="TikTok · Threads" color="violet" icon="🌐" delay={160} />
         <StatCard label="Mô hình AI"     value={data.total_models}          sub="2 Traditional · 1 DL"       color="pink"   icon="🤖" delay={240} />
       </div>
 
@@ -176,7 +176,7 @@ export default function DashboardPage() {
             <YAxis tick={{ fill: "#64748b", fontSize: 10 }} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
             <Tooltip content={<ChartTooltip formatter={(v) => `${v.toLocaleString("vi-VN")} bài`} />} />
             <Legend wrapperStyle={{ fontSize: 11, color: "#64748b", paddingTop: 8 }} />
-            {["tiktok", "threads", "facebook"].map((p) => (
+            {["tiktok", "threads"].map((p) => (
               <Line key={p} type="monotone" dataKey={p}
                 name={p.charAt(0).toUpperCase() + p.slice(1)}
                 stroke={PLATFORM_COLORS[p]} strokeWidth={2.5}
