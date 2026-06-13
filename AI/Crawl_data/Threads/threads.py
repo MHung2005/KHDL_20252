@@ -1,75 +1,30 @@
 import time
 import random
 import csv
-import io
-import uuid
 import logging
 import re
 from datetime import datetime
 
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-from hdfs import InsecureClient
-
 logger = logging.getLogger(__name__)
 
-# ============================================================
-#  CẤU HÌNH HDFS
-# ============================================================
-HDFS_URL  = "http://localhost:9870"
-HDFS_USER = "hadoop"
-HDFS_BASE = "/data/raw/threads"
-
-def save_to_hdfs(rows: list):
-    """Lưu list[dict] bình luận lên HDFS dưới dạng Parquet (SNAPPY)."""
-    if not rows:
-        return
-    today     = datetime.now().strftime("%Y-%m-%d")
-    file_id   = uuid.uuid4().hex[:8]
-    hdfs_dir  = f"{HDFS_BASE}/crawl_date={today}"
-    hdfs_path = f"{hdfs_dir}/part_{file_id}.parquet"
-
-    out = pd.DataFrame([{
-        "id":      str(uuid.uuid4()),
-        "text":    r["comment_text"],
-        "topic":   r["topic"],
-        "keyword": r["keyword"],
-        "url":     r["post_url"],
-        "label":   -1,          # -1 = chưa gán nhãn
-    } for r in rows])
-
-    buf = io.BytesIO()
-    pq.write_table(pa.Table.from_pandas(out, preserve_index=False), buf, compression="snappy")
-    buf.seek(0)
-
-    try:
-        client = InsecureClient(HDFS_URL, user=HDFS_USER)
-        client.makedirs(hdfs_dir)
-        with client.write(hdfs_path, overwrite=True) as f:
-            f.write(buf.read())
-        logger.info(f"☁️  HDFS: đã lưu {len(out)} dòng → {hdfs_path}")
-    except Exception as e:
-        logger.warning(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
-
 METADATA_KEYWORDS = {
-     "the_thao":   ["Bóng đá", "Thể thao", "Liên minh huyền thoại", "Liên quân mobile", "Thể hình", "Bóng chuyền", "Cầu lông", "Chạy bộ", "Bóng rổ", "Tin thể thao"],
-    # "lam_dep":    ["Trang điểm", "Chăm sóc da", "Làm đẹp", "Đánh giá mỹ phẩm", "Làm tóc", "Chăm sóc da", "Mẹo làm đẹp", "Trị mụn", "Son môi", "Móng tay đẹp" ],
-    # "am_thuc":    ["Ẩm thực", "Nấu ăn", "Đánh giá món ăn", "Quay cảnh ăn uống", "Món ngon mỗi ngày", "Công thức nấu ăn", "Ăn vặt", "Địa điểm ăn uống", "Học làm bánh", "Ẩm thực đường phố"],
-    # "giai_tri":   ["Xu hướng", "Hài hước", "Thịnh hành", "Nhạc hay", "Đánh giá phim", "Phim hay", "Chương trình giải trí", "Ảnh chế", "Nhạc thư giãn", "Tin giải trí"],
-    # "giao_duc":   ["Học tập", "Sách hay", "Tiếng Anh", "Khoa học", "Du học", "Phát triển bản thân", "Mẹo học tập", "Lịch sử", "Tin học văn phòng", "Kỹ năng sống"],
-    # "chinh_tri":  ["Tin tức", "Xã hội", "Thời sự", "Tin nóng dư luận", "Bản tin 24 giờ", "Tin nóng", "Sự kiện", "Thế giới", "Phóng sự", "Điểm tin"],
-    # "cong_nghe":  ["Công nghệ", "Đánh giá công nghệ", "Thủ thuật", "Trí tuệ nhân tạo", "Điện thoại mới", "Đập hộp", "Máy tính chơi game", "Ứng dụng hay", "Gạt công nghệ", "Nhà thông minh"],
-    # "kinh_doanh": ["Kinh doanh", "Khởi nghiệp", "Tài chính", "Chứng khoán", "Kiếm tiền trực tuyến", "Đầu tư", "Quản lý tài chính", "Bất động sản", "Bài học kinh doanh", "Tiếp thị"],
-    # "thoi_trang": ["Thời trang", "Trang phục", "Phối đồ", "Thời trang nam", "Thời trang nữ", "Xu hướng thời trang", "Phong cách", "Thương hiệu nội địa", "Phụ kiện thời trang", "Mua sắm quần áo"],
-    #"du_lich": ["Du lịch", "Khám phá", "Check-in Việt Nam", "Phượt", "Đánh giá du lịch", "Kinh nghiệm du lịch", "Du lịch tự túc", "Khách sạn đẹp", "Ẩm thực vùng miền", "Cẩm nang chuyến đi"],
+    "the_thao":   ["Bóng đá", "Thể thao", "Liên minh huyền thoại", "Liên quân mobile", "Thể hình", "Bóng chuyền", "Cầu lông", "Chạy bộ", "Bóng rổ", "Tin thể thao"],
+    "lam_dep":    ["Trang điểm", "Chăm sóc da", "Làm đẹp", "Đánh giá mỹ phẩm", "Làm tóc", "Mỹ phẩm thuần chay", "Mẹo làm đẹp", "Trị mụn", "Son môi", "Móng tay đẹp" ],
+    "am_thuc":    ["Ẩm thực", "Nấu ăn", "Đánh giá món ăn", "Quay cảnh ăn uống", "Món ngon mỗi ngày", "Công thức nấu ăn", "Ăn vặt", "Địa điểm ăn uống", "Học làm bánh", "Ẩm thực đường phố"],
+    "giai_tri":   ["Xu hướng", "Hài hước", "Thịnh hành", "Nhạc hay", "Đánh giá phim", "Phim hay", "Chương trình giải trí", "Ảnh chế", "Nhạc thư giãn", "Tin giải trí"],
+    "giao_duc":   ["Học tập", "Sách hay", "Tiếng Anh", "Khoa học", "Du học", "Phát triển bản thân", "Mẹo học tập", "Lịch sử", "Tin học văn phòng", "Kỹ năng sống"],
+    "chinh_tri":  ["Tin tức", "Xã hội", "Thời sự", "Tin nóng dư luận", "Bản tin 24 giờ", "Tin nóng", "Sự kiện", "Thế giới", "Phóng sự", "Điểm tin"],
+    "cong_nghe":  ["Công nghệ", "Đánh giá công nghệ", "Thủ thuật", "Trí tuệ nhân tạo", "Điện thoại mới", "Đập hộp", "Máy tính chơi game", "Ứng dụng hay", "Gạt công nghệ", "Nhà thông minh"],
+    "kinh_doanh": ["Kinh doanh", "Khởi nghiệp", "Tài chính", "Chứng khoán", "Kiếm tiền trực tuyến", "Đầu tư", "Quản lý tài chính", "Bất động sản", "Bài học kinh doanh", "Tiếp thị"],
+    "thoi_trang": ["Thời trang", "Trang phục", "Phối đồ", "Thời trang nam", "Thời trang nữ", "Xu hướng thời trang", "Phong cách", "Thương hiệu nội địa", "Phụ kiện thời trang", "Mua sắm quần áo"],
+    "du_lich": ["Du lịch", "Khám phá", "Check-in Việt Nam", "Phượt", "Đánh giá du lịch", "Kinh nghiệm du lịch", "Du lịch tự túc", "Khách sạn đẹp", "Ẩm thực vùng miền", "Cẩm nang chuyến đi"],
 }
 
 # Số bài viết tối đa lấy mỗi keyword
-MAX_POSTS_PER_KEYWORD = 20
+MAX_POSTS_PER_KEYWORD = 10
 
 # Số bình luận tối đa lấy mỗi bài viết
-MAX_COMMENTS_PER_POST = 10000
+MAX_COMMENTS_PER_POST = 500
 
 # Số lần scroll liên tiếp không ra nội dung mới thì dừng
 MAX_NO_NEW = 5
@@ -362,7 +317,6 @@ def crawl_with_selenium(output_csv: str = "threads_selenium1.csv", headless: boo
         writer.writerows(unique)
 
     logger.info(f"Đã lưu {len(unique)} bình luận → {output_csv}")
-    save_to_hdfs(unique)
     return unique
 
 

@@ -11,8 +11,6 @@ Luồng xử lý chính:
 
 import asyncio
 import csv
-import io
-import uuid
 import random
 import re
 import time
@@ -21,49 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-from hdfs import InsecureClient
 from playwright.async_api import async_playwright, Page, BrowserContext
-
-# ============================================================
-#  CẤU HÌNH HDFS
-# ============================================================
-HDFS_URL  = "http://localhost:9870"
-HDFS_USER = "hadoop"
-HDFS_BASE = "/data/raw/tiktok"
-
-def save_to_hdfs(comments: list):
-    """Lưu list[Comment] lên HDFS dưới dạng Parquet (SNAPPY)."""
-    if not comments:
-        return
-    today     = datetime.now().strftime("%Y-%m-%d")
-    file_id   = uuid.uuid4().hex[:8]
-    hdfs_dir  = f"{HDFS_BASE}/crawl_date={today}"
-    hdfs_path = f"{hdfs_dir}/part_{file_id}.parquet"
-
-    out = pd.DataFrame([{
-        "id":      str(uuid.uuid4()),
-        "text":    c.text.strip(),
-        "topic":   c.topic,
-        "keyword": c.keyword,
-        "url":     c.video_url,
-        "label":   -1,          # -1 = chưa gán nhãn
-    } for c in comments])
-
-    buf = io.BytesIO()
-    pq.write_table(pa.Table.from_pandas(out, preserve_index=False), buf, compression="snappy")
-    buf.seek(0)
-
-    try:
-        client = InsecureClient(HDFS_URL, user=HDFS_USER)
-        client.makedirs(hdfs_dir)
-        with client.write(hdfs_path, overwrite=True) as f:
-            f.write(buf.read())
-        print(f"☁️  HDFS: đã lưu {len(out)} dòng → {hdfs_path}")
-    except Exception as e:
-        print(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
 
 
 # ===========================================================================
@@ -72,17 +28,16 @@ def save_to_hdfs(comments: list):
 
 # Danh sách chủ đề và từ khóa tìm kiếm tương ứng
 TOPICS: dict[str, list[str]] = {
-    #"the_thao":   ["Bóng đá", "Thể thao", "Liên minh huyền thoại", "Liên quân mobile", "Thể hình", "Bóng chuyền", "Cầu lông", "Chạy bộ", "Bóng rổ", "Tin thể thao"],
-    # "lam_dep":    ["Trang điểm", "Chăm sóc da", "Làm đẹp", "Đánh giá mỹ phẩm", "Làm tóc", "Chăm sóc da", "Mẹo làm đẹp", "Trị mụn", "Son môi", "Móng tay đẹp"],
-    # "am_thuc":    ["Ẩm thực", "Nấu ăn", "Đánh giá món ăn", "Quay cảnh ăn uống", "Món ngon mỗi ngày", "Công thức nấu ăn", "Ăn vặt", "Địa điểm ăn uống", "Học làm bánh", "Ẩm thực đường phố"],
-    # "giai_tri":   ["Xu hướng", "Hài hước", "Thịnh hành", "Nhạc hay", "Đánh giá phim", "Phim hay", "Chương trình giải trí", "Ảnh chế", "Nhạc thư giãn", "Tin giải trí"],
-    # "giao_duc":   ["Học tập", "Sách hay", "Tiếng Anh", "Khoa học", "Du học", "Phát triển bản thân", "Mẹo học tập", "Lịch sử", "Tin học văn phòng", "Kỹ năng sống"],
-    "chinh_tri":  ["Thế giới"],
-    # "chinh_tri":  ["Tin tức", "Xã hội", "Thời sự", "Tin nóng dư luận", "Bản tin 24 giờ", "Tin nóng", "Sự kiện", "Thế giới", "Phóng sự", "Điểm tin"],
-    # "cong_nghe":  ["Công nghệ", "Đánh giá công nghệ", "Thủ thuật", "Trí tuệ nhân tạo", "Điện thoại mới", "Đập hộp", "Máy tính chơi game", "Ứng dụng hay", "Gạt công nghệ", "Nhà thông minh"],
-    # "kinh_doanh": ["Kinh doanh", "Khởi nghiệp", "Tài chính", "Chứng khoán", "Kiếm tiền trực tuyến", "Đầu tư", "Quản lý tài chính", "Bất động sản", "Bài học kinh doanh", "Tiếp thị"],
-    # "thoi_trang": [ "Thời trang", "Trang phục", "Phối đồ", "Thời trang nam", "Thời trang nữ", "Xu hướng thời trang", "Phong cách", "Thương hiệu nội địa", "Phụ kiện thời trang", "Mua sắm quần áo" ],
-    #"du_lich": [ "Du lịch", "Khám phá", "Check-in Việt Nam", "Phượt", "Đánh giá du lịch", "Kinh nghiệm du lịch", "Du lịch tự túc", "Khách sạn đẹp", "Ẩm thực vùng miền", "Cẩm nang chuyến đi" ],
+    "the_thao":   ["Bóng đá", "Thể thao", "Liên minh huyền thoại", "Liên quân mobile", "Thể hình", "Bóng chuyền", "Cầu lông", "Chạy bộ", "Bóng rổ", "Tin thể thao"],
+    "lam_dep":    ["Trang điểm", "Chăm sóc da", "Làm đẹp", "Đánh giá mỹ phẩm", "Làm tóc", "Mỹ phẩm thuần chay", "Mẹo làm đẹp", "Trị mụn", "Son môi", "Móng tay đẹp"],
+    "am_thuc":    ["Ẩm thực", "Nấu ăn", "Đánh giá món ăn", "Quay cảnh ăn uống", "Món ngon mỗi ngày", "Công thức nấu ăn", "Ăn vặt", "Địa điểm ăn uống", "Học làm bánh", "Ẩm thực đường phố"],
+    "giai_tri":   ["Xu hướng", "Hài hước", "Thịnh hành", "Nhạc hay", "Đánh giá phim", "Phim hay", "Chương trình giải trí", "Ảnh chế", "Nhạc thư giãn", "Tin giải trí"],
+    "giao_duc":   ["Học tập", "Sách hay", "Tiếng Anh", "Khoa học", "Du học", "Phát triển bản thân", "Mẹo học tập", "Lịch sử", "Tin học văn phòng", "Kỹ năng sống"],
+    "chinh_tri":  ["Tin tức", "Xã hội", "Thời sự", "Tin nóng dư luận", "Bản tin 24 giờ", "Tin nóng", "Sự kiện", "Thế giới", "Phóng sự", "Điểm tin"],
+    "cong_nghe":  ["Công nghệ", "Đánh giá công nghệ", "Thủ thuật", "Trí tuệ nhân tạo", "Điện thoại mới", "Đập hộp", "Máy tính chơi game", "Ứng dụng hay", "Gạt công nghệ", "Nhà thông minh"],
+    "kinh_doanh": ["Kinh doanh", "Khởi nghiệp", "Tài chính", "Chứng khoán", "Kiếm tiền trực tuyến", "Đầu tư", "Quản lý tài chính", "Bất động sản", "Bài học kinh doanh", "Tiếp thị"],
+    "thoi_trang": [ "Thời trang", "Trang phục", "Phối đồ", "Thời trang nam", "Thời trang nữ", "Xu hướng thời trang", "Phong cách", "Thương hiệu nội địa", "Phụ kiện thời trang", "Mua sắm quần áo" ],
+    "du_lich": [ "Du lịch", "Khám phá", "Check-in Việt Nam", "Phượt", "Đánh giá du lịch", "Kinh nghiệm du lịch", "Du lịch tự túc", "Khách sạn đẹp", "Ẩm thực vùng miền", "Cẩm nang chuyến đi" ],
 }
 
 # Danh sách User-Agent để luân phiên, tránh bị chặn
@@ -163,8 +118,8 @@ class TikTokScraper:
     def __init__(
         self,
         output_dir:   str   = "data/raw",
-        max_videos:   int   = 20,
-        max_comments: int   = 10000,
+        max_videos:   int   = 10,
+        max_comments: int   = 500,
         headless:     bool  = True,
         page_wait:    float = 5.0,
         delay_min:    float = 1.0,
@@ -345,7 +300,7 @@ class TikTokScraper:
         seen: set[str] = set()
         max_scroll_attempts = 20   # Giới hạn số lần scroll để tránh vòng lặp vô tận
         no_new_count = 0           # Số lần scroll liên tiếp không tìm được video mới
-        MAX_NO_NEW = 4             # Dừng nếu scroll 4 lần liên tiếp không ra video mới
+        MAX_NO_NEW = 5             # Dừng nếu scroll 5 lần liên tiếp không ra video mới
 
         for attempt in range(max_scroll_attempts):
             # Thu thập tất cả anchor hiện có trên trang
@@ -425,7 +380,7 @@ class TikTokScraper:
         seen_comments: set[str] = set()
         max_scroll_attempts = 20
         no_new_streak = 0       # Số lần scroll liên tiếp không ra comment mới
-        MAX_NO_NEW = 3
+        MAX_NO_NEW = 5
         prev_element_count = 0  # Theo dõi số element DOM để phát hiện scroll có hiệu quả không
 
         for _ in range(max_scroll_attempts):
@@ -627,7 +582,6 @@ class TikTokScraper:
                 writer.writerow([c.text.strip(), c.topic, c.keyword, c.video_url])
 
         print(f"  [save] Đã ghi {len(new_comments)} bình luận → {output_file}")
-        save_to_hdfs(new_comments)
 
 
     def _load_existing_keys(self, file_path: Path) -> set[tuple[str, str, str, str]]:
@@ -756,8 +710,8 @@ def _parse_like_count(raw: str) -> int:
 if __name__ == "__main__":
     scraper = TikTokScraper(
         output_dir="data/raw",
-        max_videos=20,      
-        max_comments=10000,
+        max_videos=10,      
+        max_comments=500,
         headless=False,      
     )
     asyncio.run(scraper.scrape_all_topics())

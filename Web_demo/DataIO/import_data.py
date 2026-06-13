@@ -40,8 +40,7 @@ def save_to_hdfs(df: pd.DataFrame, source="tiktok"):
         print(f"⚠️  Lưu HDFS thất bại (dữ liệu vẫn có trong CSV): {e}")
 
 if __name__ == "__main__":
-    #path = "./AI/DataIO/data_sau_loc_preprocessed.csv"
-    path = "./DataIO/data_sau_loc_preprocessed.csv"
+    path = "./DataIO/data_preprocessed.csv"
     df = pd.read_csv(path, sep=";")
     df_tiktok = df[df["source"] == "tiktok"]
     print(f"✅ Đã đọc {len(df_tiktok)} dòng từ tiktok")

@@ -1,0 +1,8 @@
+pandas
+numpy
+pyarrow
+selenium
+webdriver-manager
+playwright
+# Cài Chromium riêng cho Playwright:
+# python -m playwright install chromium
